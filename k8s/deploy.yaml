@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8s-logs #$NAMESPACE
+  labels:
+    name: k8s-logs #$NAMESPACE
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitlab-registry
+  namespace: k8s-logs #$NAMESPACE
+data:
+  .dockerconfigjson: >-
+    eyJhdXRocyI6eyJyZWdpc3RyeS56LWluYy5uZXQiOnsidXNlcm5hbWUiOiJidWlsZGVyIiwicGFzc3dvcmQiOiJzeTJDbkNzcVZzbWU4LW82eEhRVCIsImF1dGgiOiJZblZwYkdSbGNqcHplVEpEYmtOemNWWnpiV1U0TFc4MmVFaFJWQT09In19fQ==
+type: kubernetes.io/dockerconfigjson
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-logs
+  namespace: k8s-logs #$NAMESPACE
+spec:
+  selector:
+    matchLabels:
+      app: k8s-logs #$LABEL
+  replicas: 1 #$REPLICAS
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: k8s-logs #$LABEL
+    spec:
+      containers:
+      - name: k8s-logs
+        image: registry.z-inc.net/backend/k8s-logs:latest #$VERSION
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "500m"
+            memory: "1024Mi"
+      imagePullSecrets:
+        - name: gitlab-registry

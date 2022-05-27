@@ -1,0 +1,63 @@
+image: registry.z-inc.net/backend/dockerfiles/docker-ubuntu-java:jdk16
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=/cache/.m2/repository"
+
+stages:
+  - test
+  - build
+  - deploy
+
+build-docker:
+  stage: build
+  only:
+    - tags
+  variables:
+    IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA
+    IMAGE_TAG_MZ: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA-MZ
+  script:
+    - mvn -Dmaven.repo.local=/root/.m2/repository clean package -DskipTests
+    - cp -f $KUBE_CONFIG_FILE "target/config"
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.z-inc.net
+    - docker build --pull -t $IMAGE_TAG -f Dockerfile .
+    - docker push $IMAGE_TAG
+    - docker rmi $IMAGE_TAG
+    - cp -f $KUBE_CONFIG_FILE_MZ "target/config"
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.z-inc.net
+    - docker build --pull -t $IMAGE_TAG_MZ -f Dockerfile .
+    - docker push $IMAGE_TAG_MZ
+    - docker rmi $IMAGE_TAG_MZ
+
+deploy-k8s-prod:
+  stage: deploy
+  only:
+    - tags
+  variables:
+    PROD_VERSION: $CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA
+    PROD_NAMESPACE: k8s-logs
+    PROD_LABEL: k8s-logs
+    PROD_REPLICAS: 1
+  when: manual
+  dependencies:
+    - build-docker
+  before_script:
+    - mkdir -p $HOME/.kube && cp $KUBE_CONFIG_FILE "$HOME/.kube/config"
+  script:
+    - ./k8s/gitlab-kubectl-apply.sh
+
+deploy-k8s-mz:
+  stage: deploy
+  only:
+    - tags
+  variables:
+    PROD_VERSION: $CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA-MZ
+    PROD_NAMESPACE: k8s-logs
+    PROD_LABEL: k8s-logs
+    PROD_REPLICAS: 1
+  when: manual
+  dependencies:
+    - build-docker
+  before_script:
+    - mkdir -p $HOME/.kube && cp $KUBE_CONFIG_FILE_MZ "$HOME/.kube/config"
+  script:
+    - ./k8s/gitlab-kubectl-apply.sh
